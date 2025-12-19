@@ -172,5 +172,33 @@ function watchForGmailCompose() {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
+chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+  if (message?.type === 'APPLY_EMAIL') {
+    const { subject, body } = message;
+    
+    console.log('[MailPilot] Applying email to Gmail:', { subject, body });
+    
+    // Update subject
+    const subjectInput = document.querySelector<HTMLInputElement>('input[name="subjectbox"]');
+    if (subjectInput) {
+      subjectInput.value = subject;
+      subjectInput.dispatchEvent(new Event('input', { bubbles: true }));
+      subjectInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Update body - try multiple methods for Gmail compatibility
+    const bodyDiv = 
+      document.querySelector<HTMLDivElement>('div[aria-label="Message body"][g_editable="true"]') ??
+      document.querySelector<HTMLDivElement>('.Am.Al.editable') ??
+      document.querySelector<HTMLDivElement>('div[aria-label="Message body"]');
+      
+    if (bodyDiv) {
+      bodyDiv.innerText = body;
+      bodyDiv.dispatchEvent(new Event('input', { bubbles: true }));
+      bodyDiv.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+});
+
 // Initialize
 watchForGmailCompose();
