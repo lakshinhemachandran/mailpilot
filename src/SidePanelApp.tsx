@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 type EmailData = {
   subject: string;
@@ -13,7 +13,7 @@ type RewrittenEmail = {
 
 export function SidePanelApp() {
   const [tone, setTone] = useState('Formal');
-  const [addSignature, _setAddSignature] = useState(true);
+  const [_addSignature, _setAddSignature] = useState(true);
   const [email, setEmail] = useState<EmailData | null>(null);
   const [translate, setTranslate] = useState(false);
   const [fromLanguage, setFromLanguage] = useState('English');
@@ -21,9 +21,19 @@ export function SidePanelApp() {
   const [rewritten, setRewritten] = useState<RewrittenEmail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasAutoWritten = useRef(false);
+  const [cooldownProgress, setCooldownProgress] = useState(0);
+  const [isCooldown, setIsCooldown] = useState(false);
+  const loadingIntervalRef = useRef<number | null>(null);
+  const cooldownIntervalRef = useRef<number | null>(null);
+  const [typedSubject, setTypedSubject] = useState('');
+  const [typedBody, setTypedBody] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<number | null>(null);
 
   // Calculate character count from email body
   const charCount = email?.bodyText ? email.bodyText.trim().length : 0;
+
   // Load existing data when side panel opens
   useEffect(() => {
     // 1) Load latest email when panel opens
@@ -55,6 +65,154 @@ export function SidePanelApp() {
     return () => chrome.storage.onChanged.removeListener(handleChange);
   }, []);
 
+  useEffect(() => {
+    if (!email) return;
+    if (hasAutoWritten.current) return;
+
+    hasAutoWritten.current = true;
+    void handleRewrite();
+    
+  }, [email]);
+
+  // Loading animation effect (white overlay during rewrite)
+  useEffect(() => {
+    if (isLoading) {
+      // Start loading animation when loading starts
+      setCooldownProgress(0);
+      
+      const duration = 3000; // 3 seconds
+      const interval = 50; // Update every 50ms
+      const increment = (100 / (duration / interval));
+      
+      loadingIntervalRef.current = window.setInterval(() => {
+        setCooldownProgress((prev) => {
+          const next = prev + increment;
+          if (next >= 100) {
+            if (loadingIntervalRef.current) {
+              clearInterval(loadingIntervalRef.current);
+              loadingIntervalRef.current = null;
+            }
+            return 100;
+          }
+          return next;
+        });
+      }, interval);
+    } else {
+      // Reset when loading stops
+      if (loadingIntervalRef.current) {
+        clearInterval(loadingIntervalRef.current);
+        loadingIntervalRef.current = null;
+      }
+      // Only reset progress if not in cooldown
+      if (!isCooldown) {
+        setCooldownProgress(0);
+      }
+    }
+
+    return () => {
+      if (loadingIntervalRef.current) {
+        clearInterval(loadingIntervalRef.current);
+        loadingIntervalRef.current = null;
+      }
+    };
+  }, [isLoading, isCooldown]);
+
+  // Cooldown animation effect (blue overlay after rewrite completes)
+  useEffect(() => {
+    if (isCooldown) {
+      // Start cooldown animation
+      setCooldownProgress(0);
+      
+      const duration = 5000; // 5 seconds cooldown
+      const interval = 50; // Update every 50ms
+      const increment = (100 / (duration / interval));
+      
+      cooldownIntervalRef.current = window.setInterval(() => {
+        setCooldownProgress((prev) => {
+          const next = prev + increment;
+          if (next >= 100) {
+            if (cooldownIntervalRef.current) {
+              clearInterval(cooldownIntervalRef.current);
+              cooldownIntervalRef.current = null;
+            }
+            setIsCooldown(false);
+            return 0;
+          }
+          return next;
+        });
+      }, interval);
+    } else {
+      // Reset when cooldown stops
+      if (cooldownIntervalRef.current) {
+        clearInterval(cooldownIntervalRef.current);
+        cooldownIntervalRef.current = null;
+      }
+      if (!isLoading) {
+        setCooldownProgress(0);
+      }
+    }
+
+    return () => {
+      if (cooldownIntervalRef.current) {
+        clearInterval(cooldownIntervalRef.current);
+        cooldownIntervalRef.current = null;
+      }
+    };
+  }, [isCooldown, isLoading]);
+
+  // Typing animation effect
+  useEffect(() => {
+    if (!rewritten) {
+      setTypedSubject('');
+      setTypedBody('');
+      setIsTyping(false);
+      return;
+    }
+
+    // Reset and start typing animation
+    setTypedSubject('');
+    setTypedBody('');
+    setIsTyping(true);
+
+    const typeSpeed = 10; // milliseconds per character (fast typing)
+    let subjectIndex = 0;
+    let bodyIndex = 0;
+    let isTypingSubject = true;
+
+    const typeNextChar = () => {
+      if (isTypingSubject) {
+        if (subjectIndex < rewritten.subject.length) {
+          setTypedSubject(rewritten.subject.substring(0, subjectIndex + 1));
+          subjectIndex++;
+          typingTimeoutRef.current = window.setTimeout(typeNextChar, typeSpeed);
+        } else {
+          // Subject done, start typing body
+          isTypingSubject = false;
+          typingTimeoutRef.current = window.setTimeout(typeNextChar, typeSpeed);
+        }
+      } else {
+        if (bodyIndex < rewritten.body.length) {
+          setTypedBody(rewritten.body.substring(0, bodyIndex + 1));
+          bodyIndex++;
+          typingTimeoutRef.current = window.setTimeout(typeNextChar, typeSpeed);
+        } else {
+          // All done
+          setIsTyping(false);
+        }
+      }
+    };
+
+    // Start typing
+    typingTimeoutRef.current = window.setTimeout(typeNextChar, typeSpeed);
+
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+    };
+  }, [rewritten]);
+
   // Listen for rewrite responses from background script
   useEffect(() => {
     // Method 1: Listen for runtime messages
@@ -66,11 +224,15 @@ export function SidePanelApp() {
         setRewritten(message.rewritten as RewrittenEmail);
         setIsLoading(false);
         setError(null);
+        // Start cooldown after rewrite completes
+        setIsCooldown(true);
       }
       if (message.type === 'REWRITE_ERROR') {
         console.error('[MailPilot sidepanel] Rewrite error:', message.error);
         setError(message.error as string);
         setIsLoading(false);
+        // Don't start cooldown on error
+        setIsCooldown(false);
       }
     };
 
@@ -88,13 +250,15 @@ export function SidePanelApp() {
         setRewritten(changes.mailpilotRewrittenEmail.newValue as RewrittenEmail);
         setIsLoading(false);
         setError(null);
+        // Start cooldown after rewrite completes
+        setIsCooldown(true);
       }
       
       if (changes.mailpilotRewriteError?.newValue) {
         console.error('[MailPilot sidepanel] Got error from storage:', changes.mailpilotRewriteError.newValue);
-        // Fix: Add type assertion to ensure it's a string
         setError(changes.mailpilotRewriteError.newValue as string);
         setIsLoading(false);
+        setIsCooldown(false);
       }
     };
 
@@ -118,30 +282,62 @@ export function SidePanelApp() {
     };
   }, []);
 
-  const handleRewrite = async () => {
-    if (charCount < 30) return;
-    
-    if (!email) return;
-
+  const rewriteEmail = async () => {
     setIsLoading(true);
     setError(null);
     setRewritten(null);
+    setIsCooldown(false);
 
-    console.log('Rewriting with tone:', tone, 'signature:', addSignature);
-    if (translate) {
-      console.log('Translation:', fromLanguage, '→', toLanguage);
-    }
+    // Get fresh email data from Gmail
+    chrome.tabs.query({ url: 'https://mail.google.com/*' }, (tabs) => {
+      if (tabs.length === 0) {
+        setError('Gmail tab not found');
+        setIsLoading(false);
+        return;
+      }
 
-    // Send rewrite request to background script
-    chrome.runtime.sendMessage({
-      type: 'REWRITE_EMAIL',
-      email,
-      tone,
-      translate: translate ? {
-        from: fromLanguage,
-        to: toLanguage,
-      } : undefined,
+      chrome.tabs.sendMessage(tabs[0].id!, { type: 'GET_EMAIL_DATA' }, (response) => {
+        if (chrome.runtime.lastError) {
+          setError('Could not retrieve email data');
+          setIsLoading(false);
+          return;
+        }
+
+        const freshEmail = response as EmailData;
+        if (!freshEmail) {
+          setError('Could not retrieve email data');
+          setIsLoading(false);
+          return;
+        }
+
+        setEmail(freshEmail);
+        const charCount = freshEmail.bodyText ? freshEmail.bodyText.trim().length : 0;
+        if (charCount < 30) {
+          setError('Email is too short. Please write at least 30 characters.');
+          setIsLoading(false);
+          return;
+        }
+
+        console.log('Rewriting with tone:', tone);
+        if (translate) {
+          console.log('Translation:', fromLanguage, '→', toLanguage);
+        }
+
+        // Send rewrite request with fresh email data
+        chrome.runtime.sendMessage({
+          type: 'REWRITE_EMAIL',
+          email: freshEmail,
+          tone,
+          translate: translate
+            ? { from: fromLanguage, to: toLanguage }
+            : undefined,
+        });
+      });
     });
+  };
+
+  const handleRewrite = () => {
+    void rewriteEmail();
   };
 
   const handleApply = () => {
@@ -164,6 +360,7 @@ export function SidePanelApp() {
   };
 
   const isTooShort = charCount < 30;
+  const isButtonDisabled = isTooShort || isLoading || isCooldown;
 
   const languages = [
     'English',
@@ -186,15 +383,15 @@ export function SidePanelApp() {
   return (
     <div className="flex flex-col h-screen bg-white font-sans">
       {/* Main Content */}
-      <div className="flex-1 p-6 overflow-y-auto">
-        <h1 className="text-2xl font-bold mt-6 mb-4 text-[#1a1a1a]">MailPilot AI</h1>
+      <div className="flex-1 p-6 overflow-y-auto mb-4">
+        {/* <h1 className="text-2xl font-bold mt-6 mb-4 text-[#1a1a1a]">MailPilot AI</h1>
         <h2 className="text-lg font-medium mb-8 text-[#333333]">
           Enhance your email drafts with AI-powered rewriting
         </h2>
 
-        <hr className="border-t border-gray-300 w-full mx-auto mb-8" />
+        <hr className="border-t border-gray-300 w-full mx-auto mb-8" /> */}
 
-        <h1 className="text-2xl font-semibold mb-6 text-[#1a1a1a]">Select your tone</h1>
+        <h1 className="text-xl font-semibold mt-6 mb-6 text-[#1a1a1a]">Select your tone</h1>
 
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <div className="flex-1 min-w-[120px]">
@@ -215,85 +412,123 @@ export function SidePanelApp() {
             </select>
           </div>
 
-          <button
-            className="bg-[#1a73e8] text-white border-none rounded-md px-5 py-2.5 text-sm font-medium cursor-pointer flex items-center gap-2 hover:bg-[#1557b0] transition-colors flex-shrink-0 disabled:bg-[#c0c0c0] disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={handleRewrite}
-            disabled={isTooShort || isLoading}
-          >
-            {isLoading ? 'Rewriting...' : 'Rewrite'}
-            {!isLoading && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M3 4.5l3 3 3-3"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </button>
+          {/* Translation Section - moved here */}
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={translate}
+                onChange={(e) => setTranslate(e.target.checked)}
+                className="w-4 h-4 text-[#1a73e8] border-[#d0d0d0] rounded focus:ring-2 focus:ring-[#1a73e8]/10 cursor-pointer"
+              />
+              <span className="text-sm font-medium text-[#1a1a1a]">Translate</span>
+            </label>
+          </div>
         </div>
 
-        {/* Translation Section */}
-        <div className="mb-6">
-          <label className="flex items-center gap-2 mb-4 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={translate}
-              onChange={(e) => setTranslate(e.target.checked)}
-              className="w-4 h-4 text-[#1a73e8] border-[#d0d0d0] rounded focus:ring-2 focus:ring-[#1a73e8]/10 cursor-pointer"
-            />
-            <span className="text-sm font-medium text-[#1a1a1a]">Translate</span>
-          </label>
-
-          {translate && (
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="flex-1 min-w-[140px]">
-                <label className="block text-xs text-[#666] mb-1">From language</label>
-                <select
-                  className="w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm bg-white text-[#1a1a1a] cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9"
-                  value={fromLanguage}
-                  onChange={(e) => setFromLanguage(e.target.value)}
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                  }}
-                >
-                  {languages.map((lang) => (
-                    <option key={lang} value={lang}>
-                      {lang}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center text-[#666] text-sm mt-6">
-                →
-              </div>
-
-              <div className="flex-1 min-w-[140px]">
-                <label className="block text-xs text-[#666] mb-1">To language</label>
-                <select
-                  className="w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm bg-white text-[#1a1a1a] cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9"
-                  value={toLanguage}
-                  onChange={(e) => setToLanguage(e.target.value)}
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundPosition: 'right 12px center',
-                  }}
-                >
-                  {languages.map((lang) => (
-                    <option key={lang} value={lang}>
-                      {lang}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        {/* Translation language selectors - shown when translate is checked */}
+        {translate && (
+          <div className="flex items-center gap-3 mb-6 flex-wrap">
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-xs text-[#666] mb-1">From language</label>
+              <select
+                className="w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm bg-white text-[#1a1a1a] cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9"
+                value={fromLanguage}
+                onChange={(e) => setFromLanguage(e.target.value)}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 12px center',
+                }}
+              >
+                {languages.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
+
+            <div className="flex items-center text-[#666] text-sm mt-6">
+              →
+            </div>
+
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-xs text-[#666] mb-1">To language</label>
+              <select
+                className="w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm bg-white text-[#1a1a1a] cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9"
+                value={toLanguage}
+                onChange={(e) => setToLanguage(e.target.value)}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 12px center',
+                }}
+              >
+                {languages.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* Rewrite Button - moved here */}
+        <div className="mb-6">
+          <button
+            className="relative bg-[#d3272b] text-white border-none rounded-md px-5 py-2.5 text-sm font-medium cursor-pointer flex items-center gap-2 hover:bg-[#b01f23] transition-colors flex-shrink-0 disabled:bg-[#c0c0c0] disabled:cursor-not-allowed disabled:opacity-60 overflow-hidden"
+            onClick={handleRewrite}
+            disabled={isButtonDisabled}
+            style={{
+              transition: 'background-color 0.2s, opacity 0.2s',
+            }}
+          >
+            {/* Loading animation - white overlay (during rewrite) */}
+            {isLoading && (
+              <div
+                className="absolute inset-0 bg-white/30 transition-all duration-75 ease-linear"
+                style={{
+                  width: `${cooldownProgress}%`,
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+            
+            {/* Cooldown animation - darker red overlay (after rewrite completes) */}
+            {isCooldown && !isLoading && (
+              <div
+                className="absolute inset-0 bg-[#8a1619]/50 transition-all duration-75 ease-linear"
+                style={{
+                  width: `${cooldownProgress}%`,
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+            
+            {/* Button content */}
+            <span className="relative z-10 flex items-center gap-2">
+              {isLoading ? 'Rewriting...' : isCooldown ? 'Cooldown...' : 'Rewrite'}
+              {!isLoading && !isCooldown && (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M3 4.5l3 3 3-3"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </span>
+          </button>
         </div>
 
         {/* Error Message */}
@@ -322,28 +557,35 @@ export function SidePanelApp() {
 
         {/* Rewritten Email Display */}
         {rewritten && (
-          <div className="mt-4 p-4 border border-[#d0d0d0] rounded-md bg-[#f8f9fa]">
+          <div className="mt-4 p-4 border border-[#d0d0d0] rounded-md bg-[#ffffff] box-shadow-lg">
             <h2 className="text-lg font-semibold mb-4 text-[#1a1a1a]">Rewritten Email</h2>
             
             <div className="mb-4">
               <label className="block text-xs font-medium text-[#666] mb-1">Subject</label>
               <div className="px-3 py-2 bg-white border border-[#d0d0d0] rounded-md text-sm text-[#1a1a1a]">
-                {rewritten.subject}
+                {typedSubject}
+                {isTyping && typedSubject.length < rewritten.subject.length && (
+                  <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] ml-1 animate-pulse" />
+                )}
               </div>
             </div>
 
             <div className="mb-4">
               <label className="block text-xs font-medium text-[#666] mb-1">Body</label>
-              <div className="px-3 py-2 bg-white border border-[#d0d0d0] rounded-md text-sm text-[#1a1a1a] whitespace-pre-wrap min-h-[100px] max-h-[300px] overflow-y-auto">
-                {rewritten.body}
+              <div className="px-3 py-2 bg-white border border-[#d0d0d0] rounded-md text-sm text-[#1a1a1a] whitespace-pre-wrap">
+                {typedBody}
+                {isTyping && typedBody.length < rewritten.body.length && (
+                  <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] ml-1 animate-pulse" />
+                )}
               </div>
             </div>
 
             <button
-              className="w-full bg-[#28a745] text-white border-none rounded-md px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#218838] transition-colors"
+              className="w-full bg-[#d3272b] text-white border-none rounded-md px-5 py-2.5 text-sm font-medium cursor-pointer hover:bg-[#b01f23] transition-colors disabled:bg-[#c0c0c0] disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleApply}
+              disabled={isTyping}
             >
-              Apply to Gmail
+              {isTyping ? 'Typing...' : 'Apply to Gmail'}
             </button>
           </div>
         )}

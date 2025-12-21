@@ -172,7 +172,7 @@ function watchForGmailCompose() {
   observer.observe(document.body, { childList: true, subtree: true });
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === 'APPLY_EMAIL') {
     const { subject, body } = message;
     
@@ -197,6 +197,12 @@ chrome.runtime.onMessage.addListener((message, _sender, _sendResponse) => {
       bodyDiv.dispatchEvent(new Event('input', { bubbles: true }));
       bodyDiv.dispatchEvent(new Event('change', { bubbles: true }));
     }
+  }
+
+  if (message?.type === 'GET_EMAIL_DATA') {
+    const email = getCurrentEmailData();
+    console.log('[MailPilot content] GET_EMAIL_DATA ->', email);
+    sendResponse(email);
   }
 });
 

@@ -24,7 +24,8 @@
     "activeTab",
     "sidePanel",
     "tabs",
-    "storage"
+    "storage",
+    "identity"
   ],
   "commands": {
     "_execute_action": {
