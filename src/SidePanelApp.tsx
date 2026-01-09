@@ -361,7 +361,7 @@ export function SidePanelApp() {
       body: rewritten.body,
     }, (_response) => {
       if (chrome.runtime.lastError) {
-        console.error('[MailPilot sidepanel] Error applying email:', chrome.runtime.lastError);
+        // console.error('[MailPilot sidepanel] Error applying email:', chrome.runtime.lastError);
       } else {
         console.log('[MailPilot sidepanel] Email applied successfully');
       }
