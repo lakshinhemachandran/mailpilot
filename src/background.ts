@@ -1,15 +1,23 @@
 console.log('[MailPilot background] loaded');
 
 const GMAIL_ORIGIN = 'https://mail.google.com';
-const OUTLOOK_ORIGIN = 'https://outlook.office.com';
+const OUTLOOK_ORIGINS = [
+  'https://outlook.office.com',
+  'https://outlook.office365.com',
+  'https://outlook.live.com',
+];
+
+// Helper function to check if URL is supported
+function isSupportedOrigin(origin: string): boolean {
+  return origin === GMAIL_ORIGIN || OUTLOOK_ORIGINS.includes(origin);
+}
 
 // Enable side panel on Gmail + Outlook tabs
 chrome.tabs.onUpdated.addListener((tabId, _info, tab) => {
   if (!tab.url) return;
 
   const url = new URL(tab.url);
-  const isSupported =
-    url.origin === GMAIL_ORIGIN || url.origin === OUTLOOK_ORIGIN;
+  const isSupported = isSupportedOrigin(url.origin);
 
   chrome.sidePanel.setOptions({
     tabId,
@@ -23,8 +31,21 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   if (!tab.url) return;
 
   const url = new URL(tab.url);
-  const isSupported =
-    url.origin === GMAIL_ORIGIN || url.origin === OUTLOOK_ORIGIN;
+  const isSupported = isSupportedOrigin(url.origin);
+
+  chrome.sidePanel.setOptions({
+    tabId,
+    path: 'sidepanel.html',
+    enabled: isSupported,
+  });
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab.url) return;
+
+  const url = new URL(tab.url);
+  const isSupported = isSupportedOrigin(url.origin);
 
   chrome.sidePanel.setOptions({
     tabId,
