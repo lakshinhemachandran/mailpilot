@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MailPilot - AI Email Writer",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "AI email writer and translator built in on Gmail.",
   "icons": {
     "16": "icons/icon16.png",
@@ -26,11 +26,25 @@
     "tabs",
     "storage"
   ],
-  "host_permissions": ["https://mail.google.com/*"],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://outlook.office.com/mail/*",
+    "https://outlook.live.com/mail/*",
+    "https://outlook.office365.com/mail/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
       "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://outlook.office.com/mail/*",
+        "https://outlook.live.com/mail/*",
+        "https://outlook.office365.com/mail/*"
+      ],
+      "js": ["outlookContentScript.js"],
       "run_at": "document_idle"
     }
   ],
