@@ -399,8 +399,14 @@ export function SidePanelApp() {
         </h2>
 
         <hr className="border-t border-gray-300 w-full mx-auto mb-8" /> */}
+        <div className="flex justify-end">
+          <button className="">
+            <img src="icons/settings128.svg" alt="Settings" className="mt-4 w-6 h-6 hover:opacity-80" />
+          </button>
+        </div>
+        
 
-        <h1 className="text-xl font-semibold mt-6 mb-6 text-[#1a1a1a]">Select your tone</h1>
+        <h1 className="text-xl font-semibold mt-4 mb-6 text-[#1a1a1a]">Select your tone</h1>
 
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <div className="flex-1 min-w-[120px]">
