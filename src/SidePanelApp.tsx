@@ -405,6 +405,7 @@ export function SidePanelApp() {
     'Dutch',
     'Polish',
     'Turkish',
+    'Tamil',
   ];
 
   return (
