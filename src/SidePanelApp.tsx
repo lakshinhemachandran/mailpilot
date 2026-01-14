@@ -29,6 +29,8 @@ export function SidePanelApp() {
   const [typedBody, setTypedBody] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<number | null>(null);
+  
+  const [isLightMode, setIsLightMode] = useState(true);
 
   // Calculate character count from email body
   const charCount = email?.bodyText ? email.bodyText.trim().length : 0;
@@ -281,6 +283,10 @@ export function SidePanelApp() {
     };
   }, []);
 
+  const toggleLightMode = () => {
+    setIsLightMode((prev) => !prev);
+  }
+
   const rewriteEmail = async () => {
     setIsLoading(true);
     setError(null);
@@ -390,7 +396,7 @@ export function SidePanelApp() {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-white font-sans">
+    <div className={`flex flex-col h-screen ${isLightMode ? 'bg-white' : 'bg-[#1a1a1a]'} ${isLightMode ? 'text-[#1a1a1a]' : 'text-white'} font-sans`}>
       {/* Main Content */}
       <div className="flex-1 p-6 overflow-y-auto mb-4">
         {/* <h1 className="text-2xl font-bold mt-6 mb-4 text-[#1a1a1a]">MailPilot AI</h1>
@@ -400,13 +406,17 @@ export function SidePanelApp() {
 
         <hr className="border-t border-gray-300 w-full mx-auto mb-8" /> */}
         <div className="flex justify-end">
-          <button className="">
-            <img src="icons/settings128.svg" alt="Settings" className="mt-[2.5rem] w-6 h-6 hover:opacity-80" />
+          <button className="" onClick={toggleLightMode}>
+            {isLightMode ? (
+              <img src="icons/moon.svg" alt="Dark Mode" className="mt-[2.5rem] w-9 h-9 hover:opacity-80" />
+            ) : (
+              <img src="icons/sun.svg" alt="Light Mode" className="mt-[2.5rem] w-9 h-9 hover:opacity-80" />
+            )}
           </button>
         </div>
         
 
-        <h1 className="text-xl font-semibold mt-[-1.7rem] mb-6 text-[#1a1a1a]">Select your tone</h1>
+        <h1 className="text-xl font-semibold mt-[-1.7rem] mb-6">Select your tone</h1>
 
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <div className="flex-1 min-w-[120px]">
@@ -436,7 +446,7 @@ export function SidePanelApp() {
                 onChange={(e) => setTranslate(e.target.checked)}
                 className="w-4 h-4 text-[#1a73e8] border-[#d0d0d0] rounded focus:ring-2 focus:ring-[#1a73e8]/10 cursor-pointer"
               />
-              <span className="text-sm font-medium text-[#1a1a1a]">Translate</span>
+              <span className="text-sm font-medium">Translate</span>
             </label>
           </div>
         </div>
@@ -546,8 +556,8 @@ export function SidePanelApp() {
 
         {/* Rewritten Email Display */}
         {rewritten && (
-          <div className="mt-4 p-4 border border-[#d0d0d0] rounded-md bg-[#ffffff] box-shadow-lg">
-            <h2 className="text-lg font-semibold mb-4 text-[#1a1a1a]">Rewritten Email</h2>
+          <div className={`mt-4 p-4 border border-[#d0d0d0] rounded-md ${isLightMode ? 'bg-white text-[#1a1a1a]' : 'bg-[#1a1a1a] text-white'} box-shadow-lg`}>
+            <h2 className="text-lg font-semibold mb-4">Rewritten Email</h2>
             
             <div className="mb-4">
               <label className="block text-xs font-medium text-[#666] mb-1">Subject</label>
