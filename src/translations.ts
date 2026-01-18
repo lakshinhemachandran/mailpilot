@@ -562,7 +562,7 @@ export const translations: Record<UILanguage, Translations> = {
     typing: 'ಟೈಪ್ ಮಾಡುತ್ತಿದೆ...',
     rewrittenEmail: 'ಮರು ಬರೆದ ಇಮೇಲ್',
     subject: 'ವಿಷಯ',
-    body: 'ವಿಷಯ',
+    body: 'ಮುಖ್ಯ ಭಾಗ',
     interfaceLanguage: 'ಇಂಟರ್ಫೇಸ್ ಭಾಷೆ',
     darkMode: 'ಡಾರ್ಕ್ ಮೋಡ್',
     lightMode: 'ಲೈಟ್ ಮೋಡ್',
