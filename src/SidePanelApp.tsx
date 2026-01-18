@@ -16,10 +16,12 @@ export function SidePanelApp() {
   const [_addSignature, _setAddSignature] = useState(true);
   const [email, setEmail] = useState<EmailData | null>(null);
   const [translate, setTranslate] = useState(false);
+  const [fromLanguage, setFromLanguage] = useState('Auto-detect');
   const [toLanguage, setToLanguage] = useState('Spanish');
   const [rewritten, setRewritten] = useState<RewrittenEmail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const hasAutoWritten = useRef(false);
   const [cooldownProgress, setCooldownProgress] = useState(0);
   const [isCooldown, setIsCooldown] = useState(false);
@@ -299,9 +301,50 @@ export function SidePanelApp() {
     setIsLightMode((prev) => !prev);
   }
 
+  // Function to detect suspicious patterns that might be jailbreak attempts
+  const detectSuspiciousPatterns = (text: string): string | null => {
+    const suspiciousPatterns = [
+      { pattern: /ignore\s+(all\s+)?(previous|above|prior)\s+instructions/i, message: 'Contains instructions to ignore AI guidelines' },
+      { pattern: /disregard\s+(all\s+)?(previous|above|prior)\s+instructions/i, message: 'Contains instructions to disregard AI guidelines' },
+      { pattern: /forget\s+(all\s+)?(previous|above|prior)\s+instructions/i, message: 'Contains instructions to forget AI guidelines' },
+      { pattern: /you\s+are\s+now\s+(a|an)?/i, message: 'Attempts to redefine AI role' },
+      { pattern: /new\s+instructions/i, message: 'Contains new instructions for the AI' },
+      { pattern: /act\s+as\s+(a\s+)?(?!professional|formal|casual|friendly)/i, message: 'Attempts to change AI behavior' },
+      { pattern: /pretend\s+to\s+be/i, message: 'Attempts to change AI role' },
+      { pattern: /roleplay\s+as/i, message: 'Attempts roleplay behavior' },
+      { pattern: /your\s+new\s+role/i, message: 'Attempts to assign new role' },
+      { pattern: /system\s+prompt/i, message: 'References system prompt' },
+      { pattern: /do\s+not\s+(rewrite|improve|make|change|add|remove|summarize|paraphrase)/i, message: 'Instructs AI not to perform its function' },
+      { pattern: /this\s+is\s+not\s+an?\s+email/i, message: 'Claims content is not an email' },
+      { pattern: /test\s+(of\s+(an?\s+)?)?ai/i, message: 'Appears to be testing AI behavior' },
+      { pattern: /test\s+conditions/i, message: 'Contains test conditions for AI' },
+      { pattern: /output\s+only/i, message: 'Attempts to control AI output format' },
+      { pattern: /you\s+must\s+(not\s+)?output/i, message: 'Attempts to control AI output' },
+      { pattern: /the\s+only\s+thing\s+you\s+must/i, message: 'Attempts to override AI instructions' },
+    ];
+
+    const lowerText = text.toLowerCase();
+    
+    for (const { pattern, message } of suspiciousPatterns) {
+      if (pattern.test(lowerText)) {
+        return message;
+      }
+    }
+    
+    // Check for excessive use of capital letters (shouting/emphasis to force behavior)
+    const words = text.split(/\s+/);
+    const capsWords = words.filter(word => word.length > 3 && word === word.toUpperCase());
+    if (capsWords.length > 5) {
+      return 'Contains excessive capitalization that may attempt to manipulate AI';
+    }
+    
+    return null;
+  };
+
   const rewriteEmail = async () => {
     setIsLoading(true);
     setError(null);
+    setWarning(null);
     setRewritten(null);
     setIsCooldown(false);
 
@@ -348,9 +391,18 @@ export function SidePanelApp() {
           return;
         }
 
+        // Check for suspicious patterns
+        const combinedText = `${freshEmail.subject} ${freshEmail.bodyText}`;
+        const suspiciousWarning = detectSuspiciousPatterns(combinedText);
+        
+        if (suspiciousWarning) {
+          setWarning(`⚠️ Warning: Your email ${suspiciousWarning}. The AI will still attempt to rewrite it as a professional email, but results may vary.`);
+          console.warn('Suspicious pattern detected:', suspiciousWarning);
+        }
+
         console.log('Rewriting with tone:', tone);
         if (translate) {
-          console.log('Translation to:', toLanguage);
+          console.log('Translation from:', fromLanguage, 'to:', toLanguage);
         }
 
         // Send rewrite request with fresh email data
@@ -358,7 +410,7 @@ export function SidePanelApp() {
           type: 'REWRITE_EMAIL',
           email: freshEmail,
           tone,
-          translate: translate ? { to: toLanguage } : undefined,
+          translate: translate ? { from: fromLanguage !== 'Auto-detect' ? fromLanguage : undefined, to: toLanguage } : undefined,
         });
       });
     });
@@ -406,6 +458,20 @@ export function SidePanelApp() {
     'Polish',
     'Turkish',
     'Tamil',
+    'Vietnamese',
+    'Thai',
+    'Indonesian',
+    'Greek',
+    'Swedish',
+    'Norwegian',
+    'Danish',
+    'Finnish',
+    'Czech',
+    'Hungarian',
+    'Romanian',
+    'Ukrainian',
+    'Hebrew',
+    'Malay',
   ];
 
   return (
@@ -466,24 +532,47 @@ export function SidePanelApp() {
 
         {/* Translation language selector - shown when translate is checked */}
         {translate && (
-          <div className="mb-6">
-            <label className="block text-xs text-[#666] mb-1">Translate to</label>
-            <select
-              className={`w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm ${isLightMode ? 'bg-white text-[#1a1a1a]' : 'bg-[#1a1a1a] text-white'} cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9`}
-              value={toLanguage}
-              onChange={(e) => setToLanguage(e.target.value)}
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 12px center',
-              }}
-            >
-              {languages.map((lang) => (
-                <option key={lang} value={lang}>
-                  {lang}
-                </option>
-              ))}
-            </select>
+          <div className="mb-6 space-y-4">
+            <div>
+              <label className="block text-xs text-[#666] mb-1">Translate from</label>
+              <select
+                className={`w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm ${isLightMode ? 'bg-white text-[#1a1a1a]' : 'bg-[#1a1a1a] text-white'} cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9`}
+                value={fromLanguage}
+                onChange={(e) => setFromLanguage(e.target.value)}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 12px center',
+                }}
+              >
+                <option value="Auto-detect">Auto-detect</option>
+                {languages.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-xs text-[#666] mb-1">Translate to</label>
+              <select
+                className={`w-full px-3 py-2.5 border border-[#d0d0d0] rounded-md text-sm ${isLightMode ? 'bg-white text-[#1a1a1a]' : 'bg-[#1a1a1a] text-white'} cursor-pointer appearance-none hover:border-[#a0a0a0] focus:outline-none focus:border-[#1a73e8] focus:ring-2 focus:ring-[#1a73e8]/10 pr-9`}
+                value={toLanguage}
+                onChange={(e) => setToLanguage(e.target.value)}
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 4.5l3 3 3-3' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 12px center',
+                }}
+              >
+                {languages.map((lang) => (
+                  <option key={lang} value={lang}>
+                    {lang}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -549,6 +638,16 @@ export function SidePanelApp() {
             <div className="w-1 bg-[#dc3545] flex-shrink-0"></div>
             <div className="flex-1 p-4 text-sm leading-relaxed bg-[#f8d7da] text-[#721c24]">
               {error}
+            </div>
+          </div>
+        )}
+
+        {/* Warning Message */}
+        {warning && (
+          <div className="flex rounded-md mb-4 overflow-hidden">
+            <div className="w-1 bg-[#ff9800] flex-shrink-0"></div>
+            <div className="flex-1 p-4 text-sm leading-relaxed bg-[#fff4e6] text-[#5f3700]">
+              {warning}
             </div>
           </div>
         )}
